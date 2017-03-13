@@ -7,6 +7,7 @@ import (
   "strings"
   "net/http"
   "time"
+  "runtime"
 )
 
 type IPSet struct {
@@ -27,15 +28,19 @@ func main () {
   ipsetCurrent := createIPSet()
   ipsetNew := createIPSet()
 
-  blocklists := []string{ "https://www.confusticate.com/all.txt","https://www.confusticate.com/drop.txt","https://www.confusticate.com/edrop.txt","https://www.confusticate.com/test.txt"}
+  blocklists := []string{ "https://www.confusticate.com/all.txt","https://www.confusticate.com/drop.txt","https://www.confusticate.com/edrop.txt"}
 
   for 1==1 {
-    fmt.Println("# start")
+    var announcements = 0
+    var withdrawls = 0
+    
+    fmt.Println("# start blocklist refresh")
 
     for _, url := range blocklists {
-      fmt.Printf("# %s\n",url)
 
       data := downloadBlocklist(url)
+
+      fmt.Printf("# %d entries downloaded from %s\n",len(data), url)
 
       for _, ipnet := range data {
         ipsetNew.add(&ipnet)
@@ -46,13 +51,16 @@ func main () {
     for _, newip := range ipsetNew.getAll() {
       current := ipsetCurrent.contains(&newip)
       if current == nil {
-        fmt.Printf("announce %s\n", newip.String())
+        fmt.Printf("announce route %s next-hop 192.0.2.1 community [65332:666]\n", newip.String())
+        announcements++
       } else {
         // However, if the thing that matched wasn't identical to the existing one 
         // I.e. more specific IP, withdraw the existing one *and* annouce the new one
         if current.String() != newip.String() {
-          fmt.Printf("withdraw %s\n", current.String())
-          fmt.Printf("announce %s\n", newip.String())
+          fmt.Printf("withdraw route %s next-hop 192.0.2.1 community [65332:666]\n", current.String())
+          fmt.Printf("announce route %s next-hop 192.0.2.1 community [65332:666]\n", newip.String())
+          announcements++
+          withdrawls++
         }  
       }    
     }
@@ -62,23 +70,25 @@ func main () {
       newip := ipsetNew.contains(&existing)
       
       if newip == nil {
-        fmt.Printf("withdraw %s\n", existing.String())
+        fmt.Printf("withdraw route %s next-hop 192.0.2.1 community [65332:666]\n", existing.String())
+        withdrawls++
       } else {      
         // However, if the thing that matched wasn't identical to the existing one 
         // I.e. more specific IP, withdraw the existing one *and* annouce the new one
         if newip != nil && newip.String() != existing.String() {
-          fmt.Printf("withdraw %s\n", existing.String())
-          fmt.Printf("announce %s\n", newip.String())
+          fmt.Printf("withdraw route %s next-hop 192.0.2.1 community [65332:666]\n", existing.String())
+          fmt.Printf("announce route %s next-hop 192.0.2.1 community [65332:666]\n", newip.String())
+          announcements++
+          withdrawls++
         }
       }
     }
-    
-
 
     ipsetCurrent = ipsetNew
     ipsetNew = createIPSet()
-    fmt.Println("# end")
-    time.Sleep(10 * time.Second)
+    fmt.Printf("# completed with %d routes announced and %d routes withdrawn\n",announcements, withdrawls)
+    runtime.GC()
+    time.Sleep(30 * time.Minute)
   }
 }
 
