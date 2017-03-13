@@ -41,18 +41,39 @@ func main () {
         ipsetNew.add(&ipnet)
       }
     }
-    
+
+    // If IPs in the new set aren't in the current set, announce them
     for _, newip := range ipsetNew.getAll() {
-      if !ipsetCurrent.contains(&newip) {
+      current := ipsetCurrent.contains(&newip)
+      if current == nil {
         fmt.Printf("announce %s\n", newip.String())
-      }
+      } else {
+        // However, if the thing that matched wasn't identical to the existing one 
+        // I.e. more specific IP, withdraw the existing one *and* annouce the new one
+        if current.String() != newip.String() {
+          fmt.Printf("withdraw %s\n", current.String())
+          fmt.Printf("announce %s\n", newip.String())
+        }  
+      }    
     }
-  
+    
+    // If IPs from the current set aren't in the new set
     for _, existing := range ipsetCurrent.getAll() {
-      if !ipsetNew.contains(&existing) {
+      newip := ipsetNew.contains(&existing)
+      
+      if newip == nil {
         fmt.Printf("withdraw %s\n", existing.String())
+      } else {      
+        // However, if the thing that matched wasn't identical to the existing one 
+        // I.e. more specific IP, withdraw the existing one *and* annouce the new one
+        if newip != nil && newip.String() != existing.String() {
+          fmt.Printf("withdraw %s\n", existing.String())
+          fmt.Printf("announce %s\n", newip.String())
+        }
       }
     }
+    
+
 
     ipsetCurrent = ipsetNew
     ipsetNew = createIPSet()
@@ -106,14 +127,14 @@ func (ipset *IPSet) getAll() []net.IPNet {
   return collectIPs(&ipset.root)
 }
 
-func (ipset *IPSet) contains(ipnet *net.IPNet) bool {
+func (ipset *IPSet) contains(ipnet *net.IPNet) *net.IPNet {
   if ipnet != nil {
       var bits,_ = ipnet.Mask.Size()
       var addr = IPtoInt(ipnet.IP)
 
       return containsIP(&ipset.root,addr,uint32(bits))
   } else {
-    return false
+    return nil
   }
 }
 
@@ -212,24 +233,26 @@ func IPNetFromNode(node *BitNode) net.IPNet {
 }
 
 
-func containsIP(node *BitNode, addr uint32, mask uint32) bool {
+func containsIP(node *BitNode, addr uint32, mask uint32) *net.IPNet {
   if node.full {
-    return true
+    ipnet := IPNetFromNode(node)
+    
+    return &ipnet
   }
   
   if 32-node.depth > mask {
-    return false
+    return nil
   }
     
   if CheckBit(addr,node.depth - 1) {
     if node.one == nil {
-      return false
+      return nil
     } else {
       return containsIP(node.one,addr,mask)
     }
   } else {
     if node.zero == nil {
-      return false
+      return nil
     } else {
       return containsIP(node.zero,addr,mask)
     }
