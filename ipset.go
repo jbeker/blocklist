@@ -5,6 +5,7 @@ import (
   "net"
   "os"
   "bufio"
+  "strings"
 )
 
 type BitNode struct {
@@ -21,22 +22,34 @@ func main () {
   scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
     line := scanner.Text()
-    ipnet :=  StringToIPNet(line)
+    items := strings.Split(line,";")
+    ipnet :=  StringToIPNet(items[0])
 
     if ipnet != nil {
       var bits,_ = ipnet.Mask.Size()
-      addIP(&root,IPtoInt(ipnet.IP),uint32(bits))
-    }
+      var addr = IPtoInt(ipnet.IP)
 
+      addIP(&root,addr,uint32(bits))
+      
+      if !containsIP(&root,addr,uint32(bits)) {
+        fmt.Println("error")
+      }
+    }
 	}
   
-  outputTree(&root)
+//  outputTree(&root)
+
+  nets := collectIPs(&root)
+  
+  for _, net := range nets {
+    fmt.Println(net.String())
+  }
 
 }
 
 func StringToIPNet(text string) *net.IPNet {
-  var ip,ipnet,error = net.ParseCIDR(text)
-  
+  var ip,ipnet,error = net.ParseCIDR(strings.TrimSpace(text))
+
   if error != nil {
     ip = net.ParseIP(text)
     if ip != nil {
@@ -69,9 +82,8 @@ func CheckBit(num uint32, bit uint32) bool {
 
 func outputTree(node *BitNode) {
   if node.full {
-    var ip = IPFromNode(node)
-    var mask = 32 - node.depth
-    fmt.Printf("%v/%d\n",ip,mask) 
+    var ipnet = IPNetFromNode(node)
+    fmt.Println(ipnet.String())
   } else {
     if node.zero != nil {
       outputTree(node.zero)
@@ -83,6 +95,25 @@ func outputTree(node *BitNode) {
   }
 }
 
+func collectIPs(node *BitNode) []net.IPNet {
+  var nets = make([]net.IPNet,0)
+  
+  if node.full {
+    var ipnet = IPNetFromNode(node)
+    return []net.IPNet{ipnet}
+  } else {
+    if node.zero != nil {
+      nets = append(nets,collectIPs(node.zero)...)
+    }
+  
+    if node.one != nil {
+      nets = append(nets,collectIPs(node.one)...)
+    }
+  }
+  return nets
+}
+
+
 func IPFromNode(node *BitNode) net.IP {
   var cur = node
   var accumulate uint32 = 0
@@ -93,6 +124,44 @@ func IPFromNode(node *BitNode) net.IP {
   }
   
   return IntToIP(accumulate)
+}
+
+func IPNetFromNode(node *BitNode) net.IPNet {
+  var cur = node
+  var accumulate uint32 = 0
+  var mask = int(32 - node.depth)
+  
+  for cur.parent != nil {
+    accumulate |= cur.value << cur.depth
+    cur = cur.parent
+  }
+  
+  return net.IPNet{IP: IntToIP(accumulate), Mask: net.CIDRMask(mask,32)}
+}
+
+
+func containsIP(node *BitNode, addr uint32, mask uint32) bool {
+  if node.full {
+    return true
+  }
+  
+  if 32-node.depth > mask {
+    return false
+  }
+    
+  if CheckBit(addr,node.depth - 1) {
+    if node.one == nil {
+      return false
+    } else {
+      return containsIP(node.one,addr,mask)
+    }
+  } else {
+    if node.zero == nil {
+      return false
+    } else {
+      return containsIP(node.zero,addr,mask)
+    }
+  }
 }
 
 
