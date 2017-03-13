@@ -7,7 +7,7 @@ import (
 
 type BitNode struct {
   parent,zero,one *BitNode
-  depth uint
+  depth uint32
   full bool
   value uint32
 }
@@ -16,10 +16,11 @@ func main () {
 
   root := BitNode{parent: nil, zero :nil, one :nil, depth: 32, full: false, value: 0}
 
-
-  addIP(&root,IPtoInt(net.ParseIP("128.239.1.1"))) 
-  addIP(&root,IPtoInt(net.ParseIP("128.239.1.2"))) 
-  addIP(&root,IPtoInt(net.ParseIP("128.239.1.3"))) 
+  addIP(&root,IPtoInt(net.ParseIP("128.239.1.1")),32) 
+  addIP(&root,IPtoInt(net.ParseIP("128.239.1.2")),32) 
+  addIP(&root,IPtoInt(net.ParseIP("128.239.1.3")),32) 
+  addIP(&root,IPtoInt(net.ParseIP("192.168.0.0")),16) 
+  addIP(&root,IPtoInt(net.ParseIP("192.168.1.1")),32) 
   
   outputTree(&root)
 
@@ -40,7 +41,7 @@ func IntToIP(ip uint32) net.IP {
   return result
 }
 
-func CheckBit(num uint32, bit uint) bool {
+func CheckBit(num uint32, bit uint32) bool {
   return (num & (1 << bit)) != 0
 }
 
@@ -73,9 +74,9 @@ func IPFromNode(node *BitNode) net.IP {
 }
 
 
-func addIP(node *BitNode, addr uint32) bool {
+func addIP(node *BitNode, addr uint32, mask uint32) bool {
 
-  if node.depth == 0 || node.full {
+  if node.depth == 0 || 32 - node.depth == mask || node.full {
     node.full = true
     return node.full
   }
@@ -98,7 +99,7 @@ func addIP(node *BitNode, addr uint32) bool {
     }
   }
   
-  addIP(child, addr)
+  addIP(child, addr, mask)
   
   node.full = (node.one != nil && node.one.full) && (node.zero != nil && node.zero.full) 
   return node.full
