@@ -3,10 +3,16 @@ package main
 import (
   "fmt"
   "net"
-  "os"
   "bufio"
   "strings"
+  "net/http"
+  "time"
 )
+
+type IPSet struct {
+  root BitNode
+}
+
 
 type BitNode struct {
   parent,zero,one *BitNode
@@ -17,35 +23,100 @@ type BitNode struct {
 
 func main () {
 
-  root := BitNode{parent: nil, zero :nil, one :nil, depth: 32, full: false, value: 0}
+  
+  ipsetCurrent := createIPSet()
+  ipsetNew := createIPSet()
 
-  scanner := bufio.NewScanner(os.Stdin)
+  blocklists := []string{ "https://www.confusticate.com/all.txt","https://www.confusticate.com/drop.txt","https://www.confusticate.com/edrop.txt","https://www.confusticate.com/test.txt"}
+
+  for 1==1 {
+    fmt.Println("# start")
+
+    for _, url := range blocklists {
+      fmt.Printf("# %s\n",url)
+
+      data := downloadBlocklist(url)
+
+      for _, ipnet := range data {
+        ipsetNew.add(&ipnet)
+      }
+    }
+    
+    for _, newip := range ipsetNew.getAll() {
+      if !ipsetCurrent.contains(&newip) {
+        fmt.Printf("announce %s\n", newip.String())
+      }
+    }
+  
+    for _, existing := range ipsetCurrent.getAll() {
+      if !ipsetNew.contains(&existing) {
+        fmt.Printf("withdraw %s\n", existing.String())
+      }
+    }
+
+    ipsetCurrent = ipsetNew
+    ipsetNew = createIPSet()
+    fmt.Println("# end")
+    time.Sleep(10 * time.Second)
+  }
+}
+
+func downloadBlocklist(url string) []net.IPNet {
+  var nets = make([]net.IPNet,0)
+  resp, err := http.Get(url)
+  
+  if err != nil {
+    fmt.Println(err)
+    return nil
+  }
+  
+  scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
     line := scanner.Text()
     items := strings.Split(line,";")
-    ipnet :=  StringToIPNet(items[0])
+    ipnet := StringToIPNet(items[0])
 
     if ipnet != nil {
-      var bits,_ = ipnet.Mask.Size()
-      var addr = IPtoInt(ipnet.IP)
-
-      addIP(&root,addr,uint32(bits))
-      
-      if !containsIP(&root,addr,uint32(bits)) {
-        fmt.Println("error")
-      }
+        nets = append(nets,*ipnet)
     }
 	}
   
-//  outputTree(&root)
-
-  nets := collectIPs(&root)
   
-  for _, net := range nets {
-    fmt.Println(net.String())
-  }
-
+  return nets
 }
+
+
+// ====================================================================================================================
+
+func createIPSet() IPSet {
+  return IPSet { root:  BitNode{parent: nil, zero :nil, one :nil, depth: 32, full: false, value: 0} }
+}
+
+
+func (ipset *IPSet) add(ipnet *net.IPNet) {
+  if ipnet != nil {
+      var bits,_ = ipnet.Mask.Size()
+      var addr = IPtoInt(ipnet.IP)
+
+      addIP(&ipset.root,addr,uint32(bits))
+  }
+}
+
+func (ipset *IPSet) getAll() []net.IPNet {
+  return collectIPs(&ipset.root)
+}
+
+func (ipset *IPSet) contains(ipnet *net.IPNet) bool {
+  if ipnet != nil {
+      var bits,_ = ipnet.Mask.Size()
+      var addr = IPtoInt(ipnet.IP)
+
+      return containsIP(&ipset.root,addr,uint32(bits))
+  } else {
+    return false
+  }
+}
+
 
 func StringToIPNet(text string) *net.IPNet {
   var ip,ipnet,error = net.ParseCIDR(strings.TrimSpace(text))
@@ -79,6 +150,7 @@ func IntToIP(ip uint32) net.IP {
 func CheckBit(num uint32, bit uint32) bool {
   return (num & (1 << bit)) != 0
 }
+
 
 func outputTree(node *BitNode) {
   if node.full {
