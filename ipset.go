@@ -3,6 +3,8 @@ package main
 import (
   "fmt"
   "net"
+  "os"
+  "bufio"
 )
 
 type BitNode struct {
@@ -16,15 +18,35 @@ func main () {
 
   root := BitNode{parent: nil, zero :nil, one :nil, depth: 32, full: false, value: 0}
 
-  addIP(&root,IPtoInt(net.ParseIP("128.239.1.1")),32) 
-  addIP(&root,IPtoInt(net.ParseIP("128.239.1.2")),32) 
-  addIP(&root,IPtoInt(net.ParseIP("128.239.1.3")),32) 
-  addIP(&root,IPtoInt(net.ParseIP("192.168.0.0")),16) 
-  addIP(&root,IPtoInt(net.ParseIP("192.168.1.1")),32) 
+  scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+    line := scanner.Text()
+    ipnet :=  StringToIPNet(line)
+
+    if ipnet != nil {
+      var bits,_ = ipnet.Mask.Size()
+      addIP(&root,IPtoInt(ipnet.IP),uint32(bits))
+    }
+
+	}
   
   outputTree(&root)
 
 }
+
+func StringToIPNet(text string) *net.IPNet {
+  var ip,ipnet,error = net.ParseCIDR(text)
+  
+  if error != nil {
+    ip = net.ParseIP(text)
+    if ip != nil {
+      ipnet = &net.IPNet{IP: ip, Mask: net.CIDRMask(32,32)}
+    }
+  }
+  
+  return ipnet
+}
+
 func IPtoInt(addr net.IP) uint32 {
   return uint32(addr.To4()[0]) << 24 |
          uint32(addr.To4()[1]) << 16 |
