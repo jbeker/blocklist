@@ -7,15 +7,30 @@ import (
   "strings"
   "net/http"
   "time"
-  "runtime"
   "log/syslog"
   "log"
 )
 
+// BEGIN Configuration ===================================================================================================
+
+const SleepTime = 30 * time.Minute 
+
+// Blocklist URLS need to return a list of IP addresses either in raw IP, I.e. 192.168.1.4 or
+// CIDR format 192.168.0.0/16
+var blocklists = []string{"https://www.spamhaus.org/drop/drop.txt",
+        "https://www.spamhaus.org/drop/edrop.txt",
+        "https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt",
+        "https://lists.blocklist.de/lists/all.txt"}
+        
+// Announcement & Withdrawl strings %s will be replaced by the CIDR formatted route to add/remove
+const announce_template = "announce route %s next-hop 192.0.2.1 community [65332:666]\n"
+const withdraw_template = "withdraw route %s next-hop 192.0.2.1 community [65332:666]\n"
+
+// END Configuration ===================================================================================================
+
 type IPSet struct {
   root BitNode
 }
-
 
 type BitNode struct {
   parent,zero,one *BitNode
@@ -24,15 +39,10 @@ type BitNode struct {
   value uint32
 }
 
+// Process blocklists
 func main () {
-
   
-  ipsetCurrent := createIPSet()
-  ipsetNew := createIPSet()
-
-  blocklists := []string{ "https://www.confusticate.com/all.txt",
-    "https://www.confusticate.com/drop.txt",
-    "https://www.confusticate.com/edrop.txt"}
+  var ipsetCurrent = createIPSet()
     
   sysLog, err := syslog.Dial("udp", "localhost:514",
 		syslog.LOG_INFO|syslog.LOG_DAEMON, "blocklist")
@@ -40,17 +50,16 @@ func main () {
 		log.Fatal(err)
 	}
   
-
+  // Run forever, we sleep at the end of the loop
   for 1==1 {
     var announcements = 0
     var withdrawls = 0
+    var ipsetNew = createIPSet()
     
     sysLog.Info("begin blocklist refresh")
 
     for _, url := range blocklists {
-
       data := downloadBlocklist(url)
-
       sysLog.Info(fmt.Sprintf("%d entries downloaded from %s\n",len(data), url))
 
       for _, ipnet := range data {
@@ -62,14 +71,14 @@ func main () {
     for _, newip := range ipsetNew.getAll() {
       current := ipsetCurrent.contains(&newip)
       if current == nil {
-        fmt.Printf("announce route %s next-hop 192.0.2.1 community [65332:666]\n", newip.String())
+        fmt.Printf(announce_template, newip.String())
         announcements++
       } else {
         // However, if the thing that matched wasn't identical to the existing one 
         // I.e. more specific IP, withdraw the existing one *and* annouce the new one
         if current.String() != newip.String() {
-          fmt.Printf("withdraw route %s next-hop 192.0.2.1 community [65332:666]\n", current.String())
-          fmt.Printf("announce route %s next-hop 192.0.2.1 community [65332:666]\n", newip.String())
+          fmt.Printf(withdraw_template, current.String())
+          fmt.Printf(announce_template, newip.String())
           announcements++
           withdrawls++
         }  
@@ -81,14 +90,14 @@ func main () {
       newip := ipsetNew.contains(&existing)
       
       if newip == nil {
-        fmt.Printf("withdraw route %s next-hop 192.0.2.1 community [65332:666]\n", existing.String())
+        fmt.Printf(withdraw_template, existing.String())
         withdrawls++
       } else {      
         // However, if the thing that matched wasn't identical to the existing one 
         // I.e. more specific IP, withdraw the existing one *and* annouce the new one
         if newip != nil && newip.String() != existing.String() {
-          fmt.Printf("withdraw route %s next-hop 192.0.2.1 community [65332:666]\n", existing.String())
-          fmt.Printf("announce route %s next-hop 192.0.2.1 community [65332:666]\n", newip.String())
+          fmt.Printf(withdraw_template, existing.String())
+          fmt.Printf(announce_template, newip.String())
           announcements++
           withdrawls++
         }
@@ -96,10 +105,8 @@ func main () {
     }
 
     ipsetCurrent = ipsetNew
-    ipsetNew = createIPSet()
     sysLog.Info(fmt.Sprintf("completed with %d routes announced and %d routes withdrawn\n",announcements, withdrawls))
-    runtime.GC()
-    time.Sleep(30 * time.Minute)
+    time.Sleep(SleepTime)
   }
 }
 
@@ -122,18 +129,12 @@ func downloadBlocklist(url string) []net.IPNet {
         nets = append(nets,*ipnet)
     }
 	}
-  
-  
   return nets
 }
-
-
-// ====================================================================================================================
 
 func createIPSet() IPSet {
   return IPSet { root:  BitNode{parent: nil, zero :nil, one :nil, depth: 32, full: false, value: 0} }
 }
-
 
 func (ipset *IPSet) add(ipnet *net.IPNet) {
   if ipnet != nil {
@@ -158,7 +159,6 @@ func (ipset *IPSet) contains(ipnet *net.IPNet) *net.IPNet {
     return nil
   }
 }
-
 
 func StringToIPNet(text string) *net.IPNet {
   var ip,ipnet,error = net.ParseCIDR(strings.TrimSpace(text))
@@ -194,21 +194,6 @@ func CheckBit(num uint32, bit uint32) bool {
 }
 
 
-func outputTree(node *BitNode) {
-  if node.full {
-    var ipnet = IPNetFromNode(node)
-    fmt.Println(ipnet.String())
-  } else {
-    if node.zero != nil {
-      outputTree(node.zero)
-    }
-  
-    if node.one != nil {
-      outputTree(node.one)
-    }
-  }
-}
-
 func collectIPs(node *BitNode) []net.IPNet {
   var nets = make([]net.IPNet,0)
   
@@ -228,17 +213,6 @@ func collectIPs(node *BitNode) []net.IPNet {
 }
 
 
-func IPFromNode(node *BitNode) net.IP {
-  var cur = node
-  var accumulate uint32 = 0
-  
-  for cur.parent != nil {
-    accumulate |= cur.value << cur.depth
-    cur = cur.parent
-  }
-  
-  return IntToIP(accumulate)
-}
 
 func IPNetFromNode(node *BitNode) net.IPNet {
   var cur = node
