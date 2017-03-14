@@ -8,6 +8,8 @@ import (
   "net/http"
   "time"
   "runtime"
+  "log/syslog"
+  "log"
 )
 
 type IPSet struct {
@@ -28,19 +30,28 @@ func main () {
   ipsetCurrent := createIPSet()
   ipsetNew := createIPSet()
 
-  blocklists := []string{ "https://www.confusticate.com/all.txt","https://www.confusticate.com/drop.txt","https://www.confusticate.com/edrop.txt"}
+  blocklists := []string{ "https://www.confusticate.com/all.txt",
+    "https://www.confusticate.com/drop.txt",
+    "https://www.confusticate.com/edrop.txt"}
+    
+  sysLog, err := syslog.Dial("udp", "localhost:514",
+		syslog.LOG_INFO|syslog.LOG_DAEMON, "blocklist")
+	if err != nil {
+		log.Fatal(err)
+	}
+  
 
   for 1==1 {
     var announcements = 0
     var withdrawls = 0
     
-    fmt.Println("# start blocklist refresh")
+    sysLog.Info("begin blocklist refresh")
 
     for _, url := range blocklists {
 
       data := downloadBlocklist(url)
 
-      fmt.Printf("# %d entries downloaded from %s\n",len(data), url)
+      sysLog.Info(fmt.Sprintf("%d entries downloaded from %s\n",len(data), url))
 
       for _, ipnet := range data {
         ipsetNew.add(&ipnet)
@@ -86,7 +97,7 @@ func main () {
 
     ipsetCurrent = ipsetNew
     ipsetNew = createIPSet()
-    fmt.Printf("# completed with %d routes announced and %d routes withdrawn\n",announcements, withdrawls)
+    sysLog.Info(fmt.Sprintf("completed with %d routes announced and %d routes withdrawn\n",announcements, withdrawls))
     runtime.GC()
     time.Sleep(30 * time.Minute)
   }
