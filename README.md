@@ -17,13 +17,13 @@ Implementing the blocklists as a BGP feed that is then Null-routed on your route
 
 * Download the code in this repository
 * Open up `blocklist.go` and configure the elements at the head of the file for your situation.
- * The blocklists you want to subscribe to
- * The interval to refresh things (don't make it less than 30 minutes)
- * The proper route announcement and withdrawal syntax for your setup
+  * The blocklists you want to subscribe to
+  * The interval to refresh things (don't make it less than 30 minutes)
+  * The proper route announcement and withdrawal syntax for your setup
 * Compile the `blocklist` application `go build blocklist.go`
 * Install and configure [ExaBGP](https://github.com/Exa-Networks/exabgp)
- * Get it peering with your router
- * Have it use the `blocklist` application to provide routes
+  * Get it peering with your router
+  * Have it use the `blocklist` application to provide routes
 * Fire it up
 
 ### Example `exabgp` Config File
