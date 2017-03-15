@@ -13,6 +13,10 @@ Implementing the blocklists as a BGP feed that is then Null-routed on your route
 * A computer that can provide the BGP feed to the router (preferably behind the security perimeter of your network)
 * A [Go](https://golang.org) compiler set up 
 
+## Limitations
+
+* Only works for IPv4 lists (it will ignore IPv6 addresses)
+
 ## Setup
 
 * Download the code in this repository
