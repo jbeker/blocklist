@@ -9,6 +9,9 @@ import (
   "time"
   "log/syslog"
   "log"
+  "os"
+  "os/signal"
+  "syscall"
 )
 
 // BEGIN Configuration ===================================================================================================
@@ -53,6 +56,29 @@ func main () {
 	}
 	
 	sysLog = logger
+	
+	// Channels to control reloading
+	sigs := make(chan os.Signal, 1)
+	again := make(chan bool, 1)
+  
+  signal.Notify(sigs, syscall.SIGUSR1)
+  
+  // Watch for USR1 signal and reload data.
+  go func() {
+    for 1==1 {
+      <-sigs
+      again <- true
+    }
+  }()
+    
+  // Also reload based on timer.
+  go func() {
+    for 1==1 {
+      time.Sleep(SleepTime)
+      again <- true
+    }
+  }()
+  
   
   // Run forever, we sleep at the end of the loop
   for 1==1 {
@@ -110,7 +136,8 @@ func main () {
 
     ipsetCurrent = ipsetNew
     sysLog.Info(fmt.Sprintf("completed with %d routes announced and %d routes withdrawn\n",announcements, withdrawls))
-    time.Sleep(SleepTime)
+    // Wait for the signal to go again.
+    <-again
   }
 }
 
