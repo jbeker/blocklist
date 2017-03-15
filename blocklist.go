@@ -39,16 +39,20 @@ type BitNode struct {
   value uint32
 }
 
+var sysLog *syslog.Writer
+
 // Process blocklists
 func main () {
   
   var ipsetCurrent = createIPSet()
     
-  sysLog, err := syslog.Dial("udp", "localhost:514",
+  logger, err := syslog.Dial("udp", "localhost:514",
 		syslog.LOG_INFO|syslog.LOG_DAEMON, "blocklist")
 	if err != nil {
 		log.Fatal(err)
 	}
+	
+	sysLog = logger
   
   // Run forever, we sleep at the end of the loop
   for 1==1 {
@@ -115,7 +119,7 @@ func downloadBlocklist(url string) []net.IPNet {
   resp, err := http.Get(url)
   
   if err != nil {
-    fmt.Println(err)
+    sysLog.Err(fmt.Sprintf("Error downloading %s: %v",url,err))
     return nil
   }
   
@@ -137,7 +141,13 @@ func createIPSet() IPSet {
 }
 
 func (ipset *IPSet) add(ipnet *net.IPNet) {
+
   if ipnet != nil {
+      // We can't handle IPv6 now
+      if ipnet.IP.To4() == nil {
+        return
+      } 
+      
       var bits,_ = ipnet.Mask.Size()
       var addr = IPtoInt(ipnet.IP)
 
