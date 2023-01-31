@@ -16,7 +16,7 @@ import (
 
 // BEGIN Configuration ===================================================================================================
 
-const SleepTime = 30 * time.Minute 
+const SleepTime = 30 * time.Minute
 
 // Blocklist URLS need to return a list of IP addresses either in raw IP, I.e. 192.168.1.4 or
 // CIDR format 192.168.0.0/16
@@ -24,7 +24,7 @@ var blocklists = []string{"https://www.spamhaus.org/drop/drop.txt",
         "https://www.spamhaus.org/drop/edrop.txt",
         "https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt",
         "https://lists.blocklist.de/lists/all.txt"}
-        
+
 // Announcement & Withdrawl strings %s will be replaced by the CIDR formatted route to add/remove
 const announce_template = "announce route %s next-hop 192.0.2.1 community [65332:666]\n"
 const withdraw_template = "withdraw route %s next-hop 192.0.2.1 community [65332:666]\n"
@@ -46,23 +46,23 @@ var sysLog *syslog.Writer
 
 // Process blocklists
 func main () {
-  
+
   var ipsetCurrent = createIPSet()
-    
+
   logger, err := syslog.Dial("udp", "localhost:514",
 		syslog.LOG_INFO|syslog.LOG_DAEMON, "blocklist")
 	if err != nil {
 		log.Fatal(err)
 	}
-	
+
 	sysLog = logger
-	
+
 	// Channels to control reloading
 	sigs := make(chan os.Signal, 1)
 	again := make(chan bool, 1)
-  
+
   signal.Notify(sigs, syscall.SIGUSR1)
-  
+
   // Watch for USR1 signal and reload data.
   go func() {
     for 1==1 {
@@ -70,7 +70,7 @@ func main () {
       again <- true
     }
   }()
-    
+
   // Also reload based on timer.
   go func() {
     for 1==1 {
@@ -78,14 +78,14 @@ func main () {
       again <- true
     }
   }()
-  
-  
+
+
   // Run forever, we sleep at the end of the loop
   for 1==1 {
     var announcements = 0
     var withdrawls = 0
     var ipsetNew = createIPSet()
-    
+
     sysLog.Info("begin blocklist refresh")
 
     for _, url := range blocklists {
@@ -104,26 +104,26 @@ func main () {
         fmt.Printf(announce_template, newip.String())
         announcements++
       } else {
-        // However, if the thing that matched wasn't identical to the existing one 
+        // However, if the thing that matched wasn't identical to the existing one
         // I.e. more specific IP, withdraw the existing one *and* annouce the new one
         if current.String() != newip.String() {
           fmt.Printf(withdraw_template, current.String())
           fmt.Printf(announce_template, newip.String())
           announcements++
           withdrawls++
-        }  
-      }    
+        }
+      }
     }
-    
+
     // If IPs from the current set aren't in the new set
     for _, existing := range ipsetCurrent.getAll() {
       newip := ipsetNew.contains(&existing)
-      
+
       if newip == nil {
         fmt.Printf(withdraw_template, existing.String())
         withdrawls++
-      } else {      
-        // However, if the thing that matched wasn't identical to the existing one 
+      } else {
+        // However, if the thing that matched wasn't identical to the existing one
         // I.e. more specific IP, withdraw the existing one *and* annouce the new one
         if newip != nil && newip.String() != existing.String() {
           fmt.Printf(withdraw_template, existing.String())
@@ -144,12 +144,12 @@ func main () {
 func downloadBlocklist(url string) []net.IPNet {
   var nets = make([]net.IPNet,0)
   resp, err := http.Get(url)
-  
+
   if err != nil {
     sysLog.Err(fmt.Sprintf("Error downloading %s: %v",url,err))
     return nil
   }
-  
+
   scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
     line := scanner.Text()
@@ -173,8 +173,8 @@ func (ipset *IPSet) add(ipnet *net.IPNet) {
       // We can't handle IPv6 now
       if ipnet.IP.To4() == nil {
         return
-      } 
-      
+      }
+
       var bits,_ = ipnet.Mask.Size()
       var addr = IPtoInt(ipnet.IP)
 
@@ -206,7 +206,7 @@ func StringToIPNet(text string) *net.IPNet {
       ipnet = &net.IPNet{IP: ip, Mask: net.CIDRMask(32,32)}
     }
   }
-  
+
   return ipnet
 }
 
@@ -233,7 +233,7 @@ func CheckBit(num uint32, bit uint32) bool {
 
 func collectIPs(node *BitNode) []net.IPNet {
   var nets = make([]net.IPNet,0)
-  
+
   if node.full {
     var ipnet = IPNetFromNode(node)
     return []net.IPNet{ipnet}
@@ -241,7 +241,7 @@ func collectIPs(node *BitNode) []net.IPNet {
     if node.zero != nil {
       nets = append(nets,collectIPs(node.zero)...)
     }
-  
+
     if node.one != nil {
       nets = append(nets,collectIPs(node.one)...)
     }
@@ -255,12 +255,12 @@ func IPNetFromNode(node *BitNode) net.IPNet {
   var cur = node
   var accumulate uint32 = 0
   var mask = int(32 - node.depth)
-  
+
   for cur.parent != nil {
     accumulate |= cur.value << cur.depth
     cur = cur.parent
   }
-  
+
   return net.IPNet{IP: IntToIP(accumulate), Mask: net.CIDRMask(mask,32)}
 }
 
@@ -268,14 +268,14 @@ func IPNetFromNode(node *BitNode) net.IPNet {
 func containsIP(node *BitNode, addr uint32, mask uint32) *net.IPNet {
   if node.full {
     ipnet := IPNetFromNode(node)
-    
+
     return &ipnet
   }
-  
+
   if 32-node.depth > mask {
     return nil
   }
-    
+
   if CheckBit(addr,node.depth - 1) {
     if node.one == nil {
       return nil
@@ -298,27 +298,27 @@ func addIP(node *BitNode, addr uint32, mask uint32) bool {
     node.full = true
     return node.full
   }
-  
+
   var child *BitNode
-    
+
   if CheckBit(addr,node.depth - 1) {
     if node.one == nil {
-      child = &BitNode{parent: node, zero: nil, one: nil, depth: node.depth -1, full: false, value: 1}    
+      child = &BitNode{parent: node, zero: nil, one: nil, depth: node.depth -1, full: false, value: 1}
       node.one = child
     } else {
       child = node.one
     }
   } else {
     if node.zero == nil {
-      child = &BitNode{parent: node, zero: nil, one: nil, depth: node.depth -1, full: false, value: 0 }    
+      child = &BitNode{parent: node, zero: nil, one: nil, depth: node.depth -1, full: false, value: 0 }
       node.zero = child
     } else {
       child = node.zero
     }
   }
-  
+
   addIP(child, addr, mask)
-  
-  node.full = (node.one != nil && node.one.full) && (node.zero != nil && node.zero.full) 
+
+  node.full = (node.one != nil && node.one.full) && (node.zero != nil && node.zero.full)
   return node.full
 }
