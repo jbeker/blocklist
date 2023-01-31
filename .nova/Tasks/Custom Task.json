@@ -1,0 +1,8 @@
+{
+  "actions" : {
+    "build" : {
+      "enabled" : true,
+      "script" : "#!\/bin\/sh\n\/opt\/homebrew\/bin\/go build blocklist.go"
+    }
+  }
+}
