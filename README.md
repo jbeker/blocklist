@@ -24,13 +24,43 @@ Implementing the blocklists as a BGP feed that is then Null-routed on your route
   * The blocklists you want to subscribe to
   * The interval to refresh things (don't make it less than 30 minutes)
   * The proper route announcement and withdrawal syntax for your setup
+* Install golang-go
 * Compile the `blocklist` application `go build blocklist.go`
 * Install and configure [ExaBGP](https://github.com/Exa-Networks/exabgp)
   * Get it peering with your router
   * Have it use the `blocklist` application to provide routes
+  * [optional] If using a huge amount of prefixes set `exabgp.api.ack` in `/etc/exabgp.env` to `false`
 * Fire it up
 
-### Example `exabgp` Config File
+### Example `exabgp` v4+ Config File
+```
+process droproutes {
+    run /wherever/you/put/the/application/blocklist;
+    encoder text;
+}
+
+template {
+    neighbor AS65332 {
+        router-id 192.168.1.1;
+        local-as 65332;
+        local-address 192.168.1.2;
+        peer-as 65256;
+        family {
+            ipv4 unicast;
+            ipv4 multicast;
+        }
+        api {
+            processes [ droproutes ];
+        }
+    }
+}
+
+neighbor 192.168.1.1 {
+    inherit AS65332;
+}
+```
+
+### Example `exabgp` v3 Config File
 
 ```
 group AS65332 {
@@ -55,6 +85,15 @@ group AS65332 {
                 run /wherever/you/put/the/application/blocklist;
         }
 }
+```
+
+## Troubleshooting
+
+#### ExaBGP v4+ crashing with >10.000 prefixes
+* Make sure you set exabgp.api.ack in /etc/exabgp.env to 'false'
+```
+[exabgp.api]
+ack = false
 ```
 
 ## Motivation
